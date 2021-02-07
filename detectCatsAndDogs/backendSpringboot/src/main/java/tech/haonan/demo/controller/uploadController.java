@@ -10,6 +10,10 @@ import tech.haonan.demo.util.CommandUtil;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Random;
 import java.util.UUID;
 
 @RestController
@@ -21,10 +25,10 @@ public class uploadController {
         String originalFilename = file.getOriginalFilename();
         String filePath = "/data/www/default/torchImage/";
         String suffixName = originalFilename.substring(originalFilename.lastIndexOf("."));  // 后缀名
-        String newFileName = UUID.randomUUID().toString().replace("-", "") + suffixName;
+        //String newFileName = UUID.randomUUID().toString().replace("-", "") + suffixName;
+        String newFileName = getFileName(suffixName);
         String fullPath = filePath + newFileName;
         File finallyFile = new File(fullPath);
-
         try {
             file.transferTo(finallyFile);
         } catch (Exception e) {
@@ -34,7 +38,17 @@ public class uploadController {
                 " /root/tfPython/detectCatsAndDogs/detectCatsAndDogs.py /data/www/default/torchImage/" + newFileName );
         result = result.trim();
         System.out.println(originalFilename + "上传成功\n" + "网址是 https://haonan.tech/torchImage/"+ newFileName);
-        return  new ResponseFormat(200, "识别成功", result) ;
+        return  new ResponseFormat(200, originalFilename + "上传成功\n" + "网址是 https://haonan.tech/torchImage/"+ newFileName, result) ;
+    }
+
+    private String getFileName(String suffixName){
+        DateFormat df = new SimpleDateFormat("yyyy-MM-dd-hh-mm-ss");
+        int max=100,min=1;
+        long randomNum = System.currentTimeMillis();
+        int ran3 = (int) (randomNum%(max-min)+min);
+
+        String newFileName = df.format(new Date()) + ran3 + "." + suffixName;
+        return newFileName;
     }
 
 }
