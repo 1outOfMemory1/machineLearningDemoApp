@@ -1,0 +1,5 @@
+<!--index.wxml-->
+<view class="container">
+  <button class="photo" bindtap="takePhoto">点击拍照</button>
+  <image src="https://haonan.tech/torchImage/7567fea9210a46a08e8dd5641b4dedd5.jpg"></image>
+</view>
