@@ -1,11 +1,11 @@
-package haonan.tech
+package haonan.tech.util
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.media.ExifInterface
 import java.io.IOException
 
-class Util{
+class imageUtil{
     companion object {
         fun readPictureDegree(path: String): Int {
             var degree = 0

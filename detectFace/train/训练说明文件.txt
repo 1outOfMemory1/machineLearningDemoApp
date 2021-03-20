@@ -1,0 +1,122 @@
+训练自己的数据集需要准备的东西
+
+
+voc数据格式为
+PASCAL VOC2012 数据集
+    JPEGImages    JPEGImages文件夹中包含了PASCAL VOC所提供的所有的图片信息，包括了训练图片和测试图片。
+    Annotations   Annotations文件夹中存放的是xml格式的标签文件，每一个xml文件都对应于JPEGImages文件夹中的一张图片。
+    ImageSets  ImageSets存放的是每一种类型的challenge对应的图像数据。 在ImageSets下有四个文件夹：
+        Action  存放的是人的动作（例如running、jumping等等，这也是VOC challenge的一部分）
+        Layout  Layout下存放的是具有人体部位的数据（人的head、hand、feet等等，这也是VOC challenge的一部分）
+        Main    存放的是图像物体识别的数据，总共分为20类。
+        Segmentation   存放的是可用于分割的数据。
+    SegmentationClass和SegmentationObject 这两个文件夹下保存了物体分割后的图片
+
+
+<annotation>
+	<folder>VOC2012</folder>
+	<filename>2007_000392.jpg</filename>                               //文件名
+	<source>                                                           //图像来源（不重要）
+		<database>The VOC2007 Database</database>
+		<annotation>PASCAL VOC2007</annotation>
+		<image>flickr</image>
+	</source>
+	<size>			/图像尺寸（长宽以及通道数）
+		<width>500</width>
+		<height>332</height>
+		<depth>3</depth>
+	</size>
+	<segmented>1</segmented>      //是否用于分割（在图像物体识别中01无所谓）
+	<object>                      //检测到的物体
+		<name>horse</name>        //物体类别
+		<pose>Right</pose>        //拍摄角度
+		<truncated>0</truncated>  //是否被截断（0表示完整）
+		<difficult>0</difficult>  //目标是否难以识别（0表示容易识别）
+		<bndbox>                  //bounding-box（包含左下角和右上角xy坐标）
+			<xmin>100</xmin>
+			<ymin>96</ymin>
+			<xmax>355</xmax>
+			<ymax>324</ymax>
+		</bndbox>
+	</object>
+	<object>                    //检测到多个物体
+		<name>person</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>198</xmin>
+			<ymin>58</ymin>
+			<xmax>286</xmax>
+			<ymax>197</ymax>
+		</bndbox>
+	</object>
+</annotation>
+
+
+
+
+
+本次使用的数据集是 wider_face 人脸数据集
+WIDER_train.zip
+    image
+        0--Parade 等61个类别的人脸训练数据
+WIDER_val.zip
+    image
+        0--Parade 等61个类别的人脸验证数据
+WIDER_test.zip
+    image
+        0--Parade 等61个类别的人脸测试数据
+wider_face_split.zip (还有.mat为结尾的文件 没用到) 这个文件夹中的文件是描述训练 验证 测试数据集中的文件都有哪些
+    形如 0--Parade/0_Parade_marchingband_1_365.jpg
+    wider_face_train_bbx_gt.txt
+    wider_face_val_bbx_gt.txt
+    wider_face_test_filelist.txt
+
+
+介绍三个脚本
+
+1.widerface2VOC.py 这里边是有2个小脚本
+    可以将香港中文大学的人脸数据集转变为voc格式的数据集
+    第一个小脚本可以生成四个文件夹  Annotations(每个图片的标注) ImageSets(train.txt与val.txt里边是图片名) JPEGImages(所有图片)
+    第二个小脚本可以对每个图片 将.xml 转变为.txt 的自定义文件
+    generate custom voc-format-dataset labels, convert .xml to .txt for each image
+2. trans_voc2yolo.py 文件
+    他可以将voc格式的数据转换为yolo格式的数据 其实这两个都挺常用
+    可以使用labelimg标注程序进行自己数据集的生成 可以选择voc或者是yolo格式
+    需要手动率指定的内容
+    JPEGImages voc_images_path
+    Annotations voc_xml_path
+    ImageSets/train_txt train_txt_path
+    ImageSets/val_txt val_txt_path
+    pascal_voc_classes.json  label_json_path 形如下方格式
+    需要与voc中的object下的name格式对上吧？？？ 应该是需要 不确定！！！
+    {
+        "face": 1,
+        "human" : 2
+    }
+3. calculate_dataset.py
+    三个功能
+    1.统计训练集和验证集的数据并生成相应.txt文件
+    2.创建data.data文件，记录classes个数, train以及val数据集文件(.txt)路径和label.names文件路径
+    3.根据yolov3-spp.cfg创建my_yolov3.cfg文件修改其中的predictor filters以及yolo classes参数(这两个参数是根据类别数改变的)
+    需要 设置的东西 以及示范
+    train_annotation_dir = "/media/yhn/固态存储盘/机器学习数据/yolov3_spp/my_yolo_dataset/train/labels"
+    val_annotation_dir = "/media/yhn/固态存储盘/机器学习数据/yolov3_spp/my_yolo_dataset/val/labels"
+    classes_label = "./data/my_data_label.names"
+    cfg_path = "./cfg/yolov3-spp.cfg"  里边的内容是网络的结构 和要预测的类别 和 对应的参数
+
+经过三个脚本后生成的数据集数据集 放在my_yolo_dataset  文件夹下边 里边包括
+    my_yolo_dataset
+        train
+            images
+                图片存放地址 形如00001.jpg
+            labels
+                标签存放地址 形如00001.txt 内容形如 0(类别标签为0) 0.04248(矩形中心x坐标相对于) 0.286385 0.032227 0.042254
+        val
+            images
+            labels
+
+
+训练脚本 train.py
+

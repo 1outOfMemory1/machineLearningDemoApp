@@ -1,9 +1,9 @@
-package haonan.tech
+package haonan.tech.util
 
 import android.content.res.AssetManager
 import org.json.JSONObject
 
-class GetConfig (var assets: AssetManager){
+class GetConfigUtil (var assets: AssetManager){
 
     fun getJsonConfig(): JSONObject {
         val fileContent = assets.open("config.json").bufferedReader().use { it.readText() }

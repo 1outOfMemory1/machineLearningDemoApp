@@ -1,73 +1,74 @@
-package haonan.tech
+package haonan.tech.activity
 
 import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
+import android.graphics.*
 import android.net.Uri
 import android.os.*
 import android.provider.MediaStore
 import android.util.Log
-import android.widget.ImageView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider.getUriForFile
-import kotlinx.android.synthetic.main.activity_main.*
+import androidx.core.content.FileProvider
+import haonan.tech.R
+import haonan.tech.databinding.ActivityDetectFaceBinding
+import haonan.tech.util.GetConfigUtil
+import haonan.tech.util.imageUtil
+import kotlinx.android.synthetic.main.activity_detect_cats_dogs.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.create
 import org.json.JSONObject
 import java.io.File
-import java.io.FileNotFoundException
+import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.collections.ArrayList
+
+class DetectFaceActivity : AppCompatActivity() {
+
+    companion object{
+        fun actionStart(context: Context){
+            val intent: Intent = Intent(context,DetectFaceActivity::class.java)
+            context.startActivity(intent)
+        }
+    }
 
 
-/*
-项目介绍
-调用摄像头拍照 然后将图片存储到/storage/emulated/0/Android/data/你的包名/files/Pictures目录下 格式是jpg
-然后点击判断按钮 向后端服务器发送multipart/form-data 类型的数据 读取上边存储的jpg格式文件  将他发送到服务器验证
-key 是 file   value就是文件
-得到的返回值是json形式  例如
-{
-    "code": 200,
-    "message": "识别成功",
-    "data": "猫"
-}
-*/
+
+    private lateinit var binding:ActivityDetectFaceBinding
 
 
-class MainActivity : AppCompatActivity() {
-
-    // 这个currentPhotoPath 很重要 他是
+    // 这个currentPhotoPath 很重要 存储绝对路径
     private var currentPhotoPath: String = ""
-    // 暂时还没有用上 配置文件是assets目录下的 config.json 文件
+    //  配置文件是assets目录下的 config.json 文件
     private lateinit var baseUrl:String
     private val GALLERY = 1
     private val CAMERA = 0
     private val REQUEST_WRITE_EXTERNAL_STORAGE = 1
     private var lastClickTime = SystemClock.uptimeMillis()
     private var imageViewAccessBoolean:Boolean = false
+
     @RequiresApi(Build.VERSION_CODES.M)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        val jsonObject: JSONObject = GetConfig(this.assets).getJsonConfig()
+        setContentView(R.layout.activity_detect_face)
+        binding = ActivityDetectFaceBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        val jsonObject: JSONObject = GetConfigUtil(this.assets).getJsonConfig()
         baseUrl = jsonObject["baseUrl"] as String
 
         // 获取权限
         getRequirePermission()
         // 拍照按钮点击
-        takePhotoBtn.setOnClickListener {
+        binding.takePhotoBtn.setOnClickListener {
             try {
                 // 调用拍照intent  封装在下面这个函数中 这段代码需要看安卓的官方文档 我就改了几处地方
                 dispatchTakePictureIntent()
@@ -76,24 +77,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
         // 服务器发送请求按钮点击
-        sendRequestBtn.setOnClickListener {
-            if (!isFastDoubleClick()){
-                if(currentPhotoPath != "")
+        binding.sendRequestBtn.setOnClickListener {
+            if (!isFastDoubleClick()) {
+                if (currentPhotoPath != "")
                     uploadPic(currentPhotoPath)
-                else{
-                    Toast.makeText(this,"清先通过拍照或者图库选择一张图片",Toast.LENGTH_SHORT).show()
+                else {
+                    Toast.makeText(this, "清先通过拍照或者图库选择一张图片", Toast.LENGTH_SHORT).show()
                 }
-            }
-            else{
-                Toast.makeText(this,"请隔3秒后再次点击",Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "请隔3秒后再次点击", Toast.LENGTH_SHORT).show()
             }
 
 
         }
         // 从相册中选择btn
-        selectFromGallaryBtn.setOnClickListener {
+        binding.selectFromGallaryBtn.setOnClickListener {
             openAlbum()
         }
+
     }
 
 
@@ -104,9 +105,9 @@ class MainActivity : AppCompatActivity() {
     @RequiresApi(Build.VERSION_CODES.M)
     fun getRequirePermission(){
         if (ContextCompat.checkSelfPermission(this,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
-            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE,Manifest.permission.CAMERA),
-                    REQUEST_WRITE_EXTERNAL_STORAGE)
+                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
+            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.CAMERA),
+                REQUEST_WRITE_EXTERNAL_STORAGE)
         }else{
             Toast.makeText(this,"请给予摄像头和存储权限",Toast.LENGTH_SHORT).show()
         }
@@ -118,39 +119,80 @@ class MainActivity : AppCompatActivity() {
      */
     // 负责上传
     private fun uploadPic(photoAbsolutePath:String){
-        //点击判断猫狗的时候 进行发送请求 使用okhttp 发送multipart/form-data类型的数据 也就是传输文件
+        val sharedPreferences = getSharedPreferences("data", Context.MODE_PRIVATE)
+        var tokenHead:String? = sharedPreferences.getString("tokenHead","null")
+        var tokenHeader:String? = sharedPreferences.getString("tokenHeader","null")
+        var token:String? = sharedPreferences.getString("token","null")
+
+        //点击识别人脸的时候 进行发送请求 使用okhttp 发送multipart/form-data类型的数据 也就是传输文件
         val file = File(photoAbsolutePath)
-        predictResultTextView.text = "未知"
+        binding.predictResultTextView.text = "未知"
         val client = OkHttpClient()
 
-        val requestBody: RequestBody = create("application/octet-stream".toMediaTypeOrNull(), file)
+        val requestBody: RequestBody = RequestBody.create("application/octet-stream".toMediaTypeOrNull(), file)
         val multipartBody = MultipartBody.Builder()
-                .setType(MultipartBody.FORM) //我觉得 第一个参数就相当于map的key 第二个参数就是文件的名字 第三个参数就是一个file
-                .addFormDataPart("file", "aaaaa.jpg", requestBody)
-                .build()
+            .setType(MultipartBody.FORM) //我觉得 第一个参数就相当于map的key 第二个参数就是文件的名字 第三个参数就是一个file
+            .addFormDataPart("file", "aaaaa.jpg", requestBody)
+            .build()
 
         val request: Request = Request.Builder()
-                .url("${baseUrl}/upload/uploadPic")
+                .url("${baseUrl}/faceDetect/uploadAndDetect")
+                .addHeader(tokenHeader!!,tokenHead+token)
                 .post(multipartBody)
                 .addHeader("content-type", "multipart/form-data")
                 .build()
-        val call:Call = client.newCall(request)
+        val call: Call = client.newCall(request)
         call.enqueue(object : Callback {
             // 失败回调函数
             override fun onFailure(call: Call, e: java.io.IOException) {
                 Looper.prepare();
-                Toast.makeText(this@MainActivity,"请求服务器失败了"  , Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@DetectFaceActivity,"请求服务器失败了"  , Toast.LENGTH_SHORT).show()
                 Looper.loop()
             }
             // 成功回调函数
             override fun onResponse(call: Call, response: okhttp3.Response) {
-
                 val tempString:String = response.body?.string()!!
                 Log.e("abc", tempString)
                 val jsonObject:JSONObject = JSONObject(tempString)
                 // 这里必须使用 runOnUiThread 否则报错 因为不能在子线程更新ui 或者使用handler 但是我不会
                 runOnUiThread {
-                    predictResultTextView.text = jsonObject["data"].toString()
+                    //binding.predictImage?.setImageBitmap()
+
+                    // 说明识别成功 但是不一定有人脸
+                    if (jsonObject["responseCode"].toString().equals("200")){
+                        if(jsonObject["data"].toString().equals("None")){
+                            binding.predictResultTextView.text = "无人脸"
+                        }else{
+                            var faceNum = 0
+                            val faceInfo:JSONObject = JSONObject(jsonObject["data"].toString() )
+                            val faceLocationListStr =  faceInfo.get("rectangleLocation").toString()
+                            faceNum = faceInfo["faceNum"].toString().toInt()
+                            //  [[752.0, 283.0, 789.0, 329.0], [920.0, 346.0, 948.0, 383.0]]
+                            val resultList = faceLocationListStr.replace("[","").replace("]","").split(",").map {
+                                it.toFloat()
+                            }
+
+                            val fileStream:InputStream = FileInputStream(photoAbsolutePath)
+                            var bitmapPic:Bitmap = BitmapFactory.decodeStream(fileStream)
+
+                            val bitmapCopy:Bitmap = bitmapPic.copy(Bitmap.Config.ARGB_8888, true)
+                            val rotateBitmapCopy = imageUtil.rotaingImageView(imageUtil.readPictureDegree(currentPhotoPath), bitmapCopy)
+                            val canvas = Canvas(rotateBitmapCopy!!);
+                            val paint =  Paint();
+                            paint.color = Color.RED;
+                            paint.style = Paint.Style.STROKE;//不填充
+                            paint.strokeWidth = rotateBitmapCopy.height.toFloat() / 80  //线的宽度
+
+                            for(i in 0..faceNum-1){
+                                //图像上画矩形
+                                canvas.drawRect(resultList[i*4], resultList[i*4+1], resultList[i*4+2], resultList[i*4+3], paint);
+                            }
+
+
+                            binding.predictImage.setImageBitmap(rotateBitmapCopy)
+
+                        }
+                    }
                 }
             }
         })
@@ -174,8 +216,9 @@ class MainActivity : AppCompatActivity() {
      * 打开相册选择照片
      */
     private fun openAlbum() {
-        val openPhotoGalleryIntent = Intent(Intent.ACTION_PICK,
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        val openPhotoGalleryIntent = Intent(
+            Intent.ACTION_PICK,
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         startActivityForResult(openPhotoGalleryIntent, GALLERY)
     }
 
@@ -195,10 +238,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 // Continue only if the File was successfully created
                 photoFile?.also {
-                    val photoURI: Uri = getUriForFile(
-                            this,
-                            "haonan.tech.fileprovider",
-                            it
+                    val photoURI: Uri = FileProvider.getUriForFile(
+                        this,
+                        "haonan.tech.fileprovider",
+                        it
                     )
                     takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
                     startActivityForResult(takePictureIntent, CAMERA)
@@ -217,9 +260,9 @@ class MainActivity : AppCompatActivity() {
         val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
         val storageDir: File? = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
         return File.createTempFile(
-                "JPEG_${timeStamp}_", /* prefix */
-                ".jpg", /* suffix */
-                storageDir /* directory */
+            "JPEG_${timeStamp}_", /* prefix */
+            ".jpg", /* suffix */
+            storageDir /* directory */
         ).apply {
             // Save a file: path for use with ACTION_VIEW intents
             currentPhotoPath = absolutePath
@@ -230,15 +273,12 @@ class MainActivity : AppCompatActivity() {
     // 如果requestCode是GALLERY 那么是从图库选择照片完毕
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        var pic :Bitmap? = null
-
-
-
+        var pic : Bitmap? = null
         if (requestCode == CAMERA ){
 
             // 可能出现进相机没有拍照后退出的情况
             pic = BitmapFactory.decodeFile(currentPhotoPath)?:return
-            predictResultTextView.text ="未知"
+            binding.predictResultTextView.text ="未知"
         }else if (requestCode == GALLERY){
             try {
                 val selectedImage: Uri = data?.data ?: return
@@ -251,14 +291,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
         // 这里多做了一步 因为小米手机会拍照自动旋转90度 看着挺难受 所以改一改
-        predictImage?.setImageBitmap(Util.rotaingImageView(Util.readPictureDegree(currentPhotoPath),pic!!))
+        predictImage?.setImageBitmap(imageUtil.rotaingImageView(imageUtil.readPictureDegree(currentPhotoPath), pic!!))
         imageViewAccessBoolean = true
     }
 
+    /**
+     * 通过Uri参数获取绝对路径
+     */
     fun getRealPathFromURI(context: Context, contentURI: Uri): String? {
         val result: String?
         val cursor: Cursor? = context.contentResolver.query(contentURI, arrayOf(MediaStore.Images.ImageColumns.DATA),  //
-                null, null, null)
+            null, null, null)
         if (cursor == null) result = contentURI.path else {
             cursor.moveToFirst()
             val index: Int = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA)
@@ -268,13 +311,6 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
-}
 
-/*
-<files-path/> --> Context.getFilesDir()
-<cache-path/> --> Context.getCacheDir()
-<external-path/> --> Environment.getExternalStorageDirectory()
-<external-files-path/> --> Context.getExternalFilesDir(String)
-<external-cache-path/> --> Context.getExternalCacheDir()
-<external-media-path/> --> Context.getExternalMediaDirs()
-* */
+
+}
